@@ -25,3 +25,14 @@ The VPS has 1GB RAM. Build platform-independent JavaScript locally, extract and 
 Test HTTPS homepage, authenticated API, digest-verified SAP assets and signed synthetic Apple authentication via the actual browser/Wisp stack. Real-account sign-in must be confirmed by Greg.
 
 Rollback: restore the pre-hotfix Compose file and use `docker compose up -d --no-deps assppweb`; no data-volume removal or image prune. When official upstream includes and verifies SAP signing, replace this temporary local image with the verified official image and remove the override. Do not run `docker compose pull` on this local-only tag.
+
+## v3 authentication transport recovery
+
+- Evidence: ipatool PR #562 (`https://github.com/majd/ipatool/pull/562`) isolates authentication connections and backs off on malformed Apple responses. The locally inspected ipatool revision is `e3932cec31765b025b8e3edd6797e9e69c3c3fa8`.
+- An isolated browser spike retained the bag-advertised legacy URL, existing ASCII SAP device identity, body and headers. Using a fresh `libcurl.HTTPSession` per auth request, with `Connection: close` and a 10-second wait, returned a valid synthetic credential-check plist on attempt two through both Mac and VPS egress. This supports a transport/recovery patch, not a claim that all Apple failures are caused by pooling.
+- Only authentication gets an isolated session. The response body is consumed before closing, including failure paths. SAP setup and downloads retain the normal shared session. Cookies remain managed explicitly in the browser and each retry is re-signed.
+- Three total legacy/native-start attempts, with default 10/20-second delays; honor numeric or HTTP-date `Retry-After` values up to 30 seconds, stop for longer waits. Retry only malformed 204/403/404/429/5xx and Location-less 301. A valid plist credential error is terminal. Preserve the prior native fallback only after legacy recovery is exhausted, adding at most one call without resetting the transient retry budget; do not fall back when Apple supplied `Retry-After`.
+- Error diagnostics include only HTTP statuses and the endpoint hostname; never Apple response bodies, credentials, cookies, tokens or URL queries.
+- Do not change Content-Type or hardware-ID encoding: the controlled probes did not support those changes. Real-account login still requires Greg's browser verification; a nonexistent account's `codeRequired` response is only a protocol-response check.
+- Candidate image: `assppweb-local:sap-20261009-v3`; preserve v2 and the original rollback image and deploy only after isolated VPS checks.
+- Type-check compatibility: narrow the existing PBKDF2 salt parameter to `Uint8Array<ArrayBuffer>`; this is type-only, with no encryption-format change.

@@ -454,6 +454,8 @@
       "requiresVerification": "验证需要双重认证代码。如果没有弹出验证码，请尝试在 https://account.apple.com 登录以触发提示，然后在双重认证代码字段中填写该代码。",
       "redirectLocation": "无法获取重定向地址",
       "emptyBody": "认证失败：服务器返回 HTTP {{status}} 且响应体为空",
+      "unexpectedResponse": "认证失败：Apple 返回不可用的 HTTP {{status}} 响应（{{host}}；请求结果：{{attempts}}）。",
+      "waitRequested": "Apple 要求等待更长时间，请稍后再试。",
       "missingAccountInfo": "响应中缺少 accountInfo",
       "missingAddress": "响应中缺少 address",
       "unknownReason": "未知原因导致认证失败"

@@ -1,10 +1,11 @@
-import type { Account, Cookie } from "../types";
 import { appleRequest } from "./request";
 import { buildPlist, parsePlist } from "./plist";
 import { extractAndMergeCookies } from "./cookies";
 import { fetchBag, defaultAuthURL } from "./bag";
 import { prepareSigner } from "./sap/client";
+import { authRetryDelay, isUnexpectedAuthResponse, MAX_AUTH_ATTEMPTS, waitForAuthRetry } from './authRecovery';
 import i18n from "../i18n";
+import type { Account, Cookie } from "../types";
 
 export class AuthenticationError extends Error {
   constructor(
@@ -25,7 +26,7 @@ export async function authenticate(
 ): Promise<Account> {
   let cookies: Cookie[] = existingCookies ? [...existingCookies] : [];
   let storeFront = "";
-  let lastError: Error | null = null;
+  const responseStatuses: number[] = [];
 
   const defaultAuthEndpoint = new URL(defaultAuthURL);
   defaultAuthEndpoint.searchParams.set("guid", deviceId);
@@ -52,7 +53,7 @@ export async function authenticate(
   let redirectAttempt = 0;
   let usedAuthFallback = false;
 
-  while (currentAttempt < 2 && redirectAttempt <= 3) {
+  while (currentAttempt < MAX_AUTH_ATTEMPTS && redirectAttempt <= 3) {
     currentAttempt++;
 
     try {
@@ -86,7 +87,10 @@ export async function authenticate(
         headers,
         body: plistBody,
         cookies,
+        freshConnection: true,
       });
+
+      responseStatuses.push(response.status);
 
       cookies = extractAndMergeCookies(response.rawHeaders, cookies);
 
@@ -103,16 +107,26 @@ export async function authenticate(
       const podHeader = response.headers["pod"];
       const pod = podHeader || undefined;
 
-      // Some Apple edges still advertise the retired legacy endpoint but
-      // answer with HTML, an empty response or a Location-less redirect.
-      // Retry once on the already-supported native endpoint, signing again.
+      // Prefer the bag endpoint with fresh connections and bounded backoff.
+      // Keep the existing native fallback only after legacy recovery fails;
+      // this adds at most one request, without resetting the retry budget.
       const isLegacyHost = /^(?:buy|p\d+-buy)\.itunes\.apple\.com$/.test(requestHost);
       const brokenLegacyResponse =
         [204, 403, 404, 503].includes(response.status) ||
         (response.status === 301 && !response.headers["location"]);
+
+      if (isUnexpectedAuthResponse(response) && currentAttempt < MAX_AUTH_ATTEMPTS) {
+        const delay = authRetryDelay(currentAttempt, response.headers['retry-after']);
+        if (delay === null) {
+          throw new Error(i18n.t('errors.auth.waitRequested'));
+        }
+        await waitForAuthRetry(delay);
+        continue;
+      }
       if (
         sapSigner &&
         !usedAuthFallback &&
+        !response.headers["retry-after"] &&
         isLegacyHost &&
         brokenLegacyResponse &&
         !/<plist[\s>]/.test(response.body)
@@ -131,7 +145,11 @@ export async function authenticate(
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers["location"];
         if (!location) {
-          throw new Error(i18n.t("errors.auth.redirectLocation"));
+          throw new Error(i18n.t('errors.auth.unexpectedResponse', {
+            status: response.status,
+            host: requestHost,
+            attempts: responseStatuses.join(' → '),
+          }));
         }
         const url = new URL(location);
         requestHost = url.hostname;
@@ -144,8 +162,20 @@ export async function authenticate(
       // Handle non-plist responses (e.g. 403 with empty body)
       if (!response.body.trim()) {
         throw new Error(
-          i18n.t("errors.auth.emptyBody", { status: response.status }),
+          i18n.t('errors.auth.unexpectedResponse', {
+            status: response.status,
+            host: requestHost,
+            attempts: responseStatuses.join(' → '),
+          }),
         );
+      }
+
+      if (!/<plist[\s>]/.test(response.body)) {
+        throw new Error(i18n.t('errors.auth.unexpectedResponse', {
+          status: response.status,
+          host: requestHost,
+          attempts: responseStatuses.join(' → '),
+        }));
       }
 
       const dict = parsePlist(response.body) as Record<string, any>;
@@ -197,9 +227,10 @@ export async function authenticate(
       if (e instanceof AuthenticationError) {
         throw e;
       }
-      lastError = e instanceof Error ? e : new Error(String(e));
+      // Valid credential failures are terminal, not transient transport errors.
+      throw e;
     }
   }
 
-  throw lastError ?? new Error(i18n.t("errors.auth.unknownReason"));
+  throw new Error(i18n.t("errors.auth.unknownReason"));
 }

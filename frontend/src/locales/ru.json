@@ -451,6 +451,8 @@
       "requiresVerification": "Для аутентификации требуется код проверки. Если окно не появилось, войдите на https://account.apple.com, чтобы получить код, и введите его в поле.",
       "redirectLocation": "Не удалось получить адрес перенаправления",
       "emptyBody": "Ошибка аутентификации: сервер вернул HTTP {{status}} с пустым телом",
+      "unexpectedResponse": "Ошибка аутентификации: Apple вернула непригодный ответ HTTP {{status}} ({{host}}; попытки: {{attempts}}).",
+      "waitRequested": "Apple запросила более длительное ожидание. Повторите попытку позже.",
       "missingAccountInfo": "В ответе отсутствует accountInfo",
       "missingAddress": "В ответе отсутствует address",
       "unknownReason": "Аутентификация не удалась по неизвестной причине"

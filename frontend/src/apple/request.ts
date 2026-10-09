@@ -10,6 +10,8 @@ export interface AppleRequestOptions {
   headers?: Record<string, string>;
   body?: string;
   cookies?: Cookie[];
+  /** Authentication must not reuse the Store/SAP connection pool. */
+  freshConnection?: boolean;
 }
 
 export interface AppleResponse {
@@ -38,26 +40,34 @@ export async function appleRequest(
     }
   }
 
-  const resp = await libcurl.fetch(url, {
-    method: opts.method,
-    headers,
-    body: opts.body,
-    redirect: "manual",
-    _libcurl_http_version: 1.1,
-  });
+  const session = opts.freshConnection ? new libcurl.HTTPSession() : null;
+  if (session) headers['Connection'] = 'close';
 
-  const responseHeaders: Record<string, string> = {};
-  for (const [key, value] of resp.raw_headers) {
-    responseHeaders[key.toLowerCase()] = value;
+  try {
+    const resp = await (session || libcurl).fetch(url, {
+      method: opts.method,
+      headers,
+      body: opts.body,
+      redirect: "manual",
+      _libcurl_http_version: 1.1,
+    });
+
+    const responseHeaders: Record<string, string> = {};
+    for (const [key, value] of resp.raw_headers) {
+      responseHeaders[key.toLowerCase()] = value;
+    }
+
+    const body = await resp.text();
+
+    return {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: responseHeaders,
+      rawHeaders: resp.raw_headers,
+      body,
+    };
+  } finally {
+    // Consume the response before closing: fetch resolves at the headers.
+    session?.close();
   }
-
-  const body = await resp.text();
-
-  return {
-    status: resp.status,
-    statusText: resp.statusText,
-    headers: responseHeaders,
-    rawHeaders: resp.raw_headers,
-    body,
-  };
 }

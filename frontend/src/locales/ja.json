@@ -454,6 +454,8 @@
       "requiresVerification": "2ファクタ認証コードが必要です。ポップアップが出ない場合は、https://account.apple.com でサインインしてアラートをトリガーし、コード欄に入力してください。",
       "redirectLocation": "リダイレクト先を取得できませんでした",
       "emptyBody": "認証失敗: サーバーが空のボディでHTTP {{status}}を返しました",
+      "unexpectedResponse": "認証失敗: Apple が使用できない HTTP {{status}} 応答を返しました（{{host}}; 試行: {{attempts}}）。",
+      "waitRequested": "Apple が長い待機を要求しました。後でもう一度試してください。",
       "missingAccountInfo": "レスポンスに accountInfo がありません",
       "missingAddress": "レスポンスに address がありません",
       "unknownReason": "不明な理由により認証に失敗しました"

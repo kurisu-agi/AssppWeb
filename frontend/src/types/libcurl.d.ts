@@ -29,6 +29,10 @@ declare module "libcurl.js" {
     get_error_string(code: number): string;
     get_cacert(): string;
     version: string;
+    HTTPSession: new () => {
+      fetch(url: string, options?: LibcurlFetchOptions): Promise<LibcurlResponse>;
+      close(): void;
+    };
   }
 
   export const libcurl: Libcurl;
