@@ -1,0 +1,22 @@
+# Low-memory VPS packaging after local JS builds and digest-verified SAP extraction.
+# Rebuild instructions and source pins are in HOTFIX.md.
+FROM node:20-alpine
+WORKDIR /app
+RUN apk add --no-cache zip
+COPY backend/package*.json ./
+RUN apk add --no-cache --virtual .node-build python3 make g++ \
+    && npm ci --omit=dev --no-audit --no-fund \
+    && apk del .node-build \
+    && npm cache clean --force
+COPY build-artifacts/backend/ ./dist/
+COPY build-artifacts/frontend/ ./public/
+COPY build-artifacts/sap/ /opt/asspp/sap-assets/
+ARG BUILD_COMMIT
+ARG BUILD_DATE
+ENV DATA_DIR=/data PORT=8080 BUILD_COMMIT=$BUILD_COMMIT BUILD_DATE=$BUILD_DATE
+LABEL org.opencontainers.image.source="https://github.com/Lakr233/AssppWeb" \
+      org.opencontainers.image.revision=$BUILD_COMMIT \
+      org.opencontainers.image.created=$BUILD_DATE
+RUN mkdir -p /data/packages
+EXPOSE 8080
+CMD ["node", "dist/index.js"]
