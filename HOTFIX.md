@@ -7,6 +7,7 @@ Authorized by Greg after discussing the unmerged authentication fix.
 - Local patch: permit only `s.mzstatic.com` and `fpinit.itunes.apple.com` for SAP certificate and exchange calls through Wisp; retain port 443 and existing IP restrictions.
 - Regression test: the signature covers exact UTF-8 auth body bytes including non-ASCII password characters, a 2FA code and redirected retry.
 - Apple credentials remain in the browser; no real Apple account is required for the diagnostic test.
+- Live browser/VPS experiments: signed requests to the bag-advertised legacy endpoint returned 204/HTML errors; the signed native `/auth/v1/native/fast/` endpoint returned HTTP 200 with valid plist. Added one conditional fallback for signed legacy 204/403/404/503 or Location-less 301 responses that do not contain plist. Valid plist authentication errors retain their original handling. Each fallback signs the new attempt; existing GUID and cookie handling are preserved.
 
 ## Rebuild
 

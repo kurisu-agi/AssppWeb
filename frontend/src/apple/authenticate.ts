@@ -50,6 +50,7 @@ export async function authenticate(
 
   let currentAttempt = 0;
   let redirectAttempt = 0;
+  let usedAuthFallback = false;
 
   while (currentAttempt < 2 && redirectAttempt <= 3) {
     currentAttempt++;
@@ -101,6 +102,29 @@ export async function authenticate(
       // Read pod
       const podHeader = response.headers["pod"];
       const pod = podHeader || undefined;
+
+      // Some Apple edges still advertise the retired legacy endpoint but
+      // answer with HTML, an empty response or a Location-less redirect.
+      // Retry once on the already-supported native endpoint, signing again.
+      const isLegacyHost = /^(?:buy|p\d+-buy)\.itunes\.apple\.com$/.test(requestHost);
+      const brokenLegacyResponse =
+        [204, 403, 404, 503].includes(response.status) ||
+        (response.status === 301 && !response.headers["location"]);
+      if (
+        sapSigner &&
+        !usedAuthFallback &&
+        isLegacyHost &&
+        brokenLegacyResponse &&
+        !/<plist[\s>]/.test(response.body)
+      ) {
+        const fallback = new URL(defaultAuthURL);
+        fallback.searchParams.set("guid", deviceId);
+        requestHost = fallback.hostname;
+        requestPath = `${fallback.pathname}${fallback.search}`;
+        usedAuthFallback = true;
+        currentAttempt--;
+        continue;
+      }
 
       // Handle redirect. The native /fast auth host can answer with 301 as
       // well as the usual 302, so follow the full set of redirect statuses.
