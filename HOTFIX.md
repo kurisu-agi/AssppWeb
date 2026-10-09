@@ -17,7 +17,7 @@ The VPS has 1GB RAM. Build platform-independent JavaScript locally, extract and 
 2. From `backend/`, run `DATA_DIR=/tmp/asspp-sap-build-20261009 node --import tsx scripts/extract-sap-assets.mts ../build-artifacts/sap`.
 3. Copy `frontend/dist/` into `build-artifacts/frontend/` and `backend/dist/` into `build-artifacts/backend/`.
 4. Transfer the tracked source plus `build-artifacts/` into `/opt/assppweb/source-hotfix-20261009` on the VPS.
-5. Build `Dockerfile.runtime` with `BUILD_COMMIT` set to the local source commit and `BUILD_DATE` to UTC build time. Image tag: `assppweb-local:sap-20261009`.
+5. Build `Dockerfile.runtime` with `BUILD_COMMIT` set to the local source commit and `BUILD_DATE` to UTC build time. Deployed image tag: `assppweb-local:sap-20261009-v2` (runtime source commit `2140428152396c21b370cf3dcf12723c657bc203`). The initial `sap-20261009` tag was an isolated test build without the native endpoint fallback.
 6. Back up Compose/environment/data, retain the prior official image, change only the existing assppweb service image, then run `docker compose up -d --no-deps assppweb` in `/opt/assppweb`.
 
 ## Verification and removal
