@@ -433,6 +433,8 @@
       "licenseRequired": "ライセンスが必要です - 先にアプリを購入してください",
       "downloadFailed": "ダウンロード失敗: {{failureType}}",
       "noItems": "レスポンスに項目がありません",
+      "versionLookupFailed": "Unable to resolve the latest iOS version in this account’s storefront. Check app availability in that region.",
+      "unexpectedItem": "Apple returned a different app or version; download stopped.",
       "missingUrl": "ダウンロードURLがありません",
       "missingMetadata": "メタデータがありません",
       "missingVersion": "必要なバージョン情報がありません",

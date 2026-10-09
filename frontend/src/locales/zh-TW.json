@@ -433,6 +433,8 @@
       "licenseRequired": "需要授權 - 請先購買該應用程式",
       "downloadFailed": "下載失敗: {{failureType}}",
       "noItems": "回應中沒有項目",
+      "versionLookupFailed": "無法查詢帳號所在商店的最新 iOS 版本，請確認應用在該地區可用。",
+      "unexpectedItem": "Apple 回傳的應用或版本與請求不符，已停止下載。",
       "missingUrl": "缺少下載 URL",
       "missingMetadata": "缺少中繼資料",
       "missingVersion": "缺少所需的版本資訊",

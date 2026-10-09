@@ -8,6 +8,7 @@ import {
   volumeStoreEndpoint,
 } from "./config";
 import i18n from "../i18n";
+import { isRecoverableEmptyResponse, lookupLatestVersion } from './latestVersion';
 
 export class DownloadError extends Error {
   constructor(
@@ -33,11 +34,29 @@ export async function getDownloadInfo(
   let cookies = [...account.cookies];
   let redirectAttempt = 0;
 
+  const recoverViaRedownload = async () => {
+    // Unpinned redownload can return a tvOS package; resolve the latest iOS
+    // version in this account's storefront instead of guessing a version.
+    if (!externalVersionId) {
+      try {
+        externalVersionId = await lookupLatestVersion(account, app);
+      } catch {
+        throw new DownloadError(i18n.t('errors.download.versionLookupFailed'));
+      }
+    }
+    triedRedownload = true;
+    endpoint = redownloadEndpoint(deviceId);
+    requestHost = endpoint.host;
+    requestPath = endpoint.path;
+    redirectAttempt = 0;
+  };
+
   while (redirectAttempt <= 3) {
     const payload: Record<string, any> = {
       creditDisplay: "",
       guid: deviceId,
       salableAdamId: app.id,
+      serialNumber: '0',
     };
 
     if (externalVersionId) {
@@ -83,11 +102,7 @@ export async function getDownloadInfo(
       // volumeStore intermittently returns 5002; retry once via the
       // redownload dispatch endpoint, which serves the same payload.
       if (failureType === RETRYABLE_FAILURE_TYPE && !triedRedownload) {
-        triedRedownload = true;
-        endpoint = redownloadEndpoint(deviceId);
-        requestHost = endpoint.host;
-        requestPath = endpoint.path;
-        redirectAttempt = 0;
+        await recoverViaRedownload();
         continue;
       }
 
@@ -122,8 +137,13 @@ export async function getDownloadInfo(
     }
 
     const songList = dict.songList as Record<string, any>[] | undefined;
-    if (!songList || songList.length === 0) {
-      throw new DownloadError(i18n.t("errors.download.noItems"));
+    if (!Array.isArray(songList) || songList.length === 0) {
+      const message = typeof dict.customerMessage === 'string' ? dict.customerMessage.trim() : '';
+      if (!triedRedownload && isRecoverableEmptyResponse(response.status, dict)) {
+        await recoverViaRedownload();
+        continue;
+      }
+      throw new DownloadError(message || i18n.t('errors.download.noItems'));
     }
 
     const item = songList[0];
@@ -135,6 +155,14 @@ export async function getDownloadInfo(
     const metadata = item.metadata as Record<string, any>;
     if (!metadata) {
       throw new DownloadError(i18n.t("errors.download.missingMetadata"));
+    }
+
+    if (triedRedownload && (songList.length !== 1 ||
+        String(metadata.itemId) !== String(app.id) ||
+        String(metadata.softwareVersionExternalIdentifier) !== externalVersionId ||
+        !metadata.softwareVersionBundleId ||
+        (app.bundleID && metadata.softwareVersionBundleId !== app.bundleID))) {
+      throw new DownloadError(i18n.t('errors.download.unexpectedItem'));
     }
 
     const version = metadata.bundleShortVersionString as string;

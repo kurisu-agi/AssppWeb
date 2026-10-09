@@ -433,6 +433,8 @@
       "licenseRequired": "라이선스가 필요합니다 - 앱을 먼저 구매하세요",
       "downloadFailed": "다운로드 실패: {{failureType}}",
       "noItems": "응답에 항목이 없습니다",
+      "versionLookupFailed": "Unable to resolve the latest iOS version in this account’s storefront. Check app availability in that region.",
+      "unexpectedItem": "Apple returned a different app or version; download stopped.",
       "missingUrl": "다운로드 URL이 없습니다",
       "missingMetadata": "메타데이터가 없습니다",
       "missingVersion": "필요한 버전 정보가 없습니다",

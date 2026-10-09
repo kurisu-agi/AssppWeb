@@ -433,6 +433,8 @@
       "licenseRequired": "License required - purchase the app first",
       "downloadFailed": "Download failed: {{failureType}}",
       "noItems": "No items in response",
+      "versionLookupFailed": "Unable to resolve the latest iOS version in this account’s storefront. Check app availability in that region.",
+      "unexpectedItem": "Apple returned a different app or version; download stopped.",
       "missingUrl": "Missing download URL",
       "missingMetadata": "Missing metadata",
       "missingVersion": "Missing required version information",

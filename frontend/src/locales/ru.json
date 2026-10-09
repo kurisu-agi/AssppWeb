@@ -430,6 +430,8 @@
       "licenseRequired": "Требуется лицензия - сначала купите приложение",
       "downloadFailed": "Ошибка загрузки: {{failureType}}",
       "noItems": "В ответе нет элементов",
+      "versionLookupFailed": "Unable to resolve the latest iOS version in this account’s storefront. Check app availability in that region.",
+      "unexpectedItem": "Apple returned a different app or version; download stopped.",
       "missingUrl": "Отсутствует URL-адрес загрузки",
       "missingMetadata": "Отсутствуют метаданные",
       "missingVersion": "Отсутствует необходимая информация о версии",

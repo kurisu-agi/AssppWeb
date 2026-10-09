@@ -2,6 +2,8 @@ import type { Account, Software, VersionMetadata } from "../types";
 import { appleRequest } from "./request";
 import { buildPlist, parsePlist } from "./plist";
 import { extractAndMergeCookies } from "./cookies";
+import { isRecoverableEmptyResponse } from './latestVersion';
+import i18n from '../i18n';
 import {
   RETRYABLE_FAILURE_TYPE,
   redownloadEndpoint,
@@ -30,6 +32,7 @@ export async function getVersionMetadata(
       creditDisplay: "",
       guid: deviceId,
       salableAdamId: app.id,
+      serialNumber: '0',
       [endpoint.externalVersionIdKey]: versionId,
     };
 
@@ -69,7 +72,8 @@ export async function getVersionMetadata(
     // volumeStore intermittently returns 5002; retry once via the redownload
     // dispatch endpoint, which serves the same payload.
     if (
-      String(dict.failureType ?? "") === RETRYABLE_FAILURE_TYPE &&
+      (String(dict.failureType ?? "") === RETRYABLE_FAILURE_TYPE ||
+       isRecoverableEmptyResponse(response.status, dict)) &&
       !triedRedownload
     ) {
       triedRedownload = true;
@@ -81,14 +85,19 @@ export async function getVersionMetadata(
     }
 
     const songList = dict.songList as Record<string, any>[] | undefined;
-    if (!songList || songList.length === 0) {
-      throw new Error("No items in response");
+    if (!Array.isArray(songList) || songList.length === 0) {
+      throw new Error(dict.customerMessage || i18n.t('errors.download.noItems'));
     }
 
     const item = songList[0];
     const itemMetadata = item.metadata as Record<string, any>;
     if (!itemMetadata) {
       throw new Error("Missing metadata");
+    }
+    if (triedRedownload && (songList.length !== 1 || String(itemMetadata.itemId) !== String(app.id) ||
+        String(itemMetadata.softwareVersionExternalIdentifier) !== versionId ||
+        itemMetadata.softwareVersionBundleId !== app.bundleID)) {
+      throw new Error(i18n.t('errors.download.unexpectedItem'));
     }
 
     const bundleShortVersionString =
