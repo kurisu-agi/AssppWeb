@@ -1,7 +1,7 @@
 import { appleRequest } from "./request";
 import { buildPlist, parsePlist } from "./plist";
 import { extractAndMergeCookies } from "./cookies";
-import { fetchBag, defaultAuthURL } from "./bag";
+import { fetchBag, defaultAuthURL, normalizeAuthURL } from "./bag";
 import { prepareSigner } from "./sap/client";
 import { authRetryDelay, isUnexpectedAuthResponse, MAX_AUTH_ATTEMPTS, waitForAuthRetry } from './authRecovery';
 import i18n from "../i18n";
@@ -34,7 +34,7 @@ export async function authenticate(
   let requestPath = `${defaultAuthEndpoint.pathname}${defaultAuthEndpoint.search}`;
 
   const bag = await fetchBag(deviceId);
-  const authEndpoint = new URL(bag.authURL);
+  const authEndpoint = new URL(normalizeAuthURL(bag.authURL));
   authEndpoint.searchParams.set("guid", deviceId);
   requestHost = authEndpoint.hostname;
   requestPath = `${authEndpoint.pathname}${authEndpoint.search}`;
@@ -151,7 +151,7 @@ export async function authenticate(
             attempts: responseStatuses.join(' → '),
           }));
         }
-        const url = new URL(location);
+        const url = new URL(normalizeAuthURL(new URL(location, `https://${requestHost}${requestPath}`).toString()));
         requestHost = url.hostname;
         requestPath = url.pathname + url.search;
         currentAttempt--;

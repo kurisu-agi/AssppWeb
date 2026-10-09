@@ -19,7 +19,8 @@ vi.mock("../../src/apple/request", () => ({
   appleRequest: vi.fn(),
 }));
 
-vi.mock("../../src/apple/bag", () => ({
+vi.mock("../../src/apple/bag", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../src/apple/bag")>(),
   fetchBag: vi.fn(),
   defaultAuthURL:
     "https://auth.itunes.apple.com/auth/v1/native/fast/",
@@ -191,5 +192,6 @@ describe("apple/authenticate", () => {
     expect(endpoint.searchParams.get("guid")).toBe("aabbccddeeff");
     expect(endpoint.searchParams.getAll("guid")).toHaveLength(1);
     expect(endpoint.searchParams.get("foo")).toBe("1");
+    expect(endpoint.pathname).toBe('/WebObjects/MZFinance.woa/wa/authenticate/');
   });
 });
