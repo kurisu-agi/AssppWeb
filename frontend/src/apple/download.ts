@@ -1,6 +1,7 @@
+import { parseDownloadResponse, recoverUpdateEndpoint } from './downloadRecovery';
 import type { Account, Software, DownloadOutput, Sinf } from "../types";
 import { appleRequest } from "./request";
-import { buildPlist, parsePlist } from "./plist";
+import { buildPlist } from "./plist";
 import { extractAndMergeCookies } from "./cookies";
 import {
   RETRYABLE_FAILURE_TYPE,
@@ -31,6 +32,7 @@ export async function getDownloadInfo(
   let requestHost = endpoint.host;
   let requestPath = endpoint.path;
   let triedRedownload = false;
+  let triedUpdate = false;
   let cookies = [...account.cookies];
   let redirectAttempt = 0;
 
@@ -94,7 +96,26 @@ export async function getDownloadInfo(
       continue;
     }
 
-    const dict = parsePlist(response.body) as Record<string, any>;
+    let dict: Record<string, any> | undefined;
+    let parseError: unknown;
+    try {
+      dict = parseDownloadResponse(response, requestHost, requestPath);
+    } catch (error) {
+      parseError = error;
+    }
+    if (triedRedownload && !triedUpdate) {
+      const update = await recoverUpdateEndpoint(response, dict, deviceId);
+      if (update) {
+        triedUpdate = true;
+        endpoint = update;
+        requestHost = endpoint.host;
+        requestPath = endpoint.path;
+        redirectAttempt = 0;
+        continue;
+      }
+    }
+    if (!dict) throw parseError;
+
 
     if (dict.failureType) {
       const failureType = String(dict.failureType);

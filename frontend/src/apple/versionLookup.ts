@@ -1,6 +1,7 @@
+import { parseDownloadResponse, recoverUpdateEndpoint } from './downloadRecovery';
 import type { Account, Software, VersionMetadata } from "../types";
 import { appleRequest } from "./request";
-import { buildPlist, parsePlist } from "./plist";
+import { buildPlist } from "./plist";
 import { extractAndMergeCookies } from "./cookies";
 import { isRecoverableEmptyResponse } from './latestVersion';
 import i18n from '../i18n';
@@ -24,6 +25,7 @@ export async function getVersionMetadata(
   let requestHost = endpoint.host;
   let requestPath = endpoint.path;
   let triedRedownload = false;
+  let triedUpdate = false;
   let cookies = [...account.cookies];
   let redirectAttempt = 0;
 
@@ -67,7 +69,26 @@ export async function getVersionMetadata(
       continue;
     }
 
-    const dict = parsePlist(response.body) as Record<string, any>;
+    let dict: Record<string, any> | undefined;
+    let parseError: unknown;
+    try {
+      dict = parseDownloadResponse(response, requestHost, requestPath);
+    } catch (error) {
+      parseError = error;
+    }
+    if (triedRedownload && !triedUpdate) {
+      const update = await recoverUpdateEndpoint(response, dict, deviceId);
+      if (update) {
+        triedUpdate = true;
+        endpoint = update;
+        requestHost = endpoint.host;
+        requestPath = endpoint.path;
+        redirectAttempt = 0;
+        continue;
+      }
+    }
+    if (!dict) throw parseError;
+
 
     // volumeStore intermittently returns 5002; retry once via the redownload
     // dispatch endpoint, which serves the same payload.
