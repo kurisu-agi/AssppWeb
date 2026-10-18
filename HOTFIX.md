@@ -1,76 +1,9 @@
-# RackNerd SAP sign-in hotfix — 2026-10-09
+# Self-hosted compatibility patches
 
-Authorized by Greg after discussing the unmerged authentication fix.
+This branch preserves the SAP signing, authentication path normalization, bounded
+transport recovery and download response recovery patches. See the relevant
+source commits and regression tests for implementation details.
 
-- Official base: `3bc9515ba5df2d02c06fc827dc85232473be9274`.
-- Upstream PR #89: `835a54dd773caeaa6ad6b342d5cde1bf3e6ceb29`, merged onto the base without replacing the unrelated download-host fix.
-- Local patch: permit only `s.mzstatic.com` and `fpinit.itunes.apple.com` for SAP certificate and exchange calls through Wisp; retain port 443 and existing IP restrictions.
-- Regression test: the signature covers exact UTF-8 auth body bytes including non-ASCII password characters, a 2FA code and redirected retry.
-- Apple credentials remain in the browser; no real Apple account is required for the diagnostic test.
-- Live browser/VPS experiments: signed requests to the bag-advertised legacy endpoint returned 204/HTML errors; the signed native `/auth/v1/native/fast/` endpoint returned HTTP 200 with valid plist. Added one conditional fallback for signed legacy 204/403/404/503 or Location-less 301 responses that do not contain plist. Valid plist authentication errors retain their original handling. Each fallback signs the new attempt; existing GUID and cookie handling are preserved.
-
-## Rebuild
-
-The VPS has 1GB RAM. Build platform-independent JavaScript locally, extract and verify the public Apple SAP assets using the upstream extractor, then package with the target-platform runtime dependencies on the VPS.
-
-1. Run `npm ci`, `npm test` and `npm run build` in `frontend/` and `backend/`.
-2. From `backend/`, run `DATA_DIR=/tmp/asspp-sap-build-20261009 node --import tsx scripts/extract-sap-assets.mts ../build-artifacts/sap`.
-3. Copy `frontend/dist/` into `build-artifacts/frontend/` and `backend/dist/` into `build-artifacts/backend/`.
-4. Transfer the tracked source plus `build-artifacts/` into `/opt/assppweb/source-hotfix-20261009` on the VPS.
-5. Build `Dockerfile.runtime` with `BUILD_COMMIT` set to the local source commit and `BUILD_DATE` to UTC build time. Deployed image tag: `assppweb-local:sap-20261009-v2` (runtime source commit `2140428152396c21b370cf3dcf12723c657bc203`). The initial `sap-20261009` tag was an isolated test build without the native endpoint fallback.
-6. Back up Compose/environment/data, retain the prior official image, change only the existing assppweb service image, then run `docker compose up -d --no-deps assppweb` in `/opt/assppweb`.
-
-## Verification and removal
-
-Test HTTPS homepage, authenticated API, digest-verified SAP assets and signed synthetic Apple authentication via the actual browser/Wisp stack. Real-account sign-in must be confirmed by Greg.
-
-Rollback: restore the pre-hotfix Compose file and use `docker compose up -d --no-deps assppweb`; no data-volume removal or image prune. When official upstream includes and verifies SAP signing, replace this temporary local image with the verified official image and remove the override. Do not run `docker compose pull` on this local-only tag.
-
-## v3 authentication transport recovery
-
-- Evidence: ipatool PR #562 (`https://github.com/majd/ipatool/pull/562`) isolates authentication connections and backs off on malformed Apple responses. The locally inspected ipatool revision is `e3932cec31765b025b8e3edd6797e9e69c3c3fa8`.
-- An isolated browser spike retained the bag-advertised legacy URL, existing ASCII SAP device identity, body and headers. Using a fresh `libcurl.HTTPSession` per auth request, with `Connection: close` and a 10-second wait, returned a valid synthetic credential-check plist on attempt two through both Mac and VPS egress. This supports a transport/recovery patch, not a claim that all Apple failures are caused by pooling.
-- Only authentication gets an isolated session. The response body is consumed before closing, including failure paths. SAP setup and downloads retain the normal shared session. Cookies remain managed explicitly in the browser and each retry is re-signed.
-- Three total legacy/native-start attempts, with default 10/20-second delays; honor numeric or HTTP-date `Retry-After` values up to 30 seconds, stop for longer waits. Retry only malformed 204/403/404/429/5xx and Location-less 301. A valid plist credential error is terminal. Preserve the prior native fallback only after legacy recovery is exhausted, adding at most one call without resetting the transient retry budget; do not fall back when Apple supplied `Retry-After`.
-- Error diagnostics include only HTTP statuses and the endpoint hostname; never Apple response bodies, credentials, cookies, tokens or URL queries.
-- Do not change Content-Type or hardware-ID encoding: the controlled probes did not support those changes. Real-account login still requires Greg's browser verification; a nonexistent account's `codeRequired` response is only a protocol-response check.
-- Candidate image: `assppweb-local:sap-20261009-v3`; preserve v2 and the original rollback image and deploy only after isolated VPS checks.
-- Type-check compatibility: narrow the existing PBKDF2 salt parameter to `Uint8Array<ArrayBuffer>`; this is type-only, with no encryption-format change.
-
-### Missing legacy trailing slash identified
-
-The initial connection/backoff candidate returned a protocol plist in only 1/3 complete local browser flows; do not treat backoff alone as a completed repair. The official ipatool 2.6.0 binary (release SHA-256 verified) returned parseable synthetic credential-check responses in three native runs on the same Mac egress. Its implementation includes `f9aa6536cd2db16ab93f663d8731e4300921c132` (`https://github.com/majd/ipatool/commit/f9aa6536cd2db16ab93f663d8731e4300921c132`): normalize the initial legacy `.../wa/authenticate` path to `.../wa/authenticate/`, retaining host and query.
-
-Controlled browser A/B: preserve the original ASCII signer identity, request body, Content-Type, HTTP/1.1 and GUID query; adding only the missing legacy path slash returned HTTP 200 with plist on the first request through both Mac and VPS egress. Removing GUID queries or changing encoding/HTTP version was not consistently successful. v3 now narrowly normalizes only the known legacy authentication path on buy/pod hosts, and reapplies normalization on redirects, including relative redirects. Non-authentication paths remain untouched. Connection isolation and bounded recovery remain as resilience measures, not the principal path fix. Real-account sign-in is still unverified until Greg tests it in his browser.
-
-### v3 deployment verification
-
-Deployed runtime source `5a7c2903f9f6638b6ac0d0e218befd2cf8e3c96c`, image `assppweb-local:sap-20261009-v3`, image ID `sha256:d3c65a915ced0234c3b7fe3a78fa4debcf64b3c08a3b3ac5e20ccd714299b423`, build date `2026-10-09T10:02:41Z`. Frontend 126 tests, TypeScript check and production build passed. Full unmodified built-browser synthetic flows returned valid credential-check plists in 3/3 local, 3/3 isolated VPS and 3/3 production HTTPS contexts, including newly generated device IDs. Formal origin checks: homepage 200, protected API 401 anonymously and 200 with retained access token, expected runtime source revision. Original data volume and access-password configuration retained; other production service start timestamps unchanged. Pre-v3 restricted backup is `/opt/assppweb/backups/20261009-auth-v3/`, including Compose, optional environment, image ID and 65MB data archive. Retain v2 and pre-SAP images. Source and source Git bundle are preserved separately from v2. Real-account authentication, actual 2FA and downloads still require Greg's verification.
-
-## v4 empty download/version-list recovery
-
-Greg confirmed real sign-in works on v3; downloading the latest mainland-China Bilibili and loading its historical-version list still returned no items. v3 login code is unchanged.
-
-Primary reference: official ipatool source at `e3932cec31765b025b8e3edd6797e9e69c3c3fa8`, `pkg/appstore/appstore_download_product.go` and `appstore_platform_version_lookup.go`. Legacy volumeStore can silently return HTTP 200 without songList; ipatool retries that or message-only “No Longer Available” through redownload, resolving the latest iOS external version before unpinned dispatch. AssppWeb only retried failureType 5002.
-
-Focused patch: one redownload fallback for a recoverable HTTP-200 empty list, preserving cookies and existing error handling. Latest requests resolve a positive iOS external version ID using the account's own storefront, with bounded enterprise/iphone/ipad public MDM catalog lookups; historical requests retain their exact ID. Browser lookup sends no account cookies, DSID or password token. Added only the exact public `uclient-api.itunes.apple.com` host to Wisp's existing port-443 allowlist. Download and version results from dispatch are checked for app ID, bundle ID and external version ID. Customer-message-only errors now remain visible. No automatic purchase, account collection or KBSync implementation is introduced.
-
-Controlled public lookup verified mainland Bilibili app 736536022 / tv.danmaku.bilianime exposes an iOS external version; do not hard-code that changing version. Frontend 145 tests, TypeScript check, backend 49 tests and both builds passed. Mock response tests are recovery/control-flow evidence, not proof of real-account download. Deployment must retain v3, the unchanged data volume/access configuration and all prior rollback artifacts; deploy only AssppWeb.
-
-### v4 deployment verification
-
-Runtime source `02fa71ab1f4c325fa31550ad22d180c1fd6fde48`, image `assppweb-local:sap-20261009-v4`, image ID `sha256:560f9c8a8cb0c23b77945981b2576df426c21ca784d4326f94d7b93b84f6c499`, build date `2026-10-09T10:30:29Z`. Real built-browser public Bilibili iOS catalog queries succeeded in the isolated VPS container and production HTTPS origin, no page errors. Production homepage 200, anonymous settings 401, authenticated settings 200, matching full source revision. One synthetic signed authentication regression returned a parseable credential-check plist (not a real login). Restricted pre-v4 backup `/opt/assppweb/backups/20261009-download-v4/`; original data mount and credentials unchanged, Compose diff only v3→v4 image, other-service start timestamps unchanged, zero target restart count. Test container stopped and SSH tunnel closed; preserve its volume and v3 rollback image. Source archive/bundle `/opt/assppweb/asspp-download-recovery-20261009-v4*`, extracted source `/opt/assppweb/source-download-recovery-20261009-v4`. Actual Bilibili download and historical-version list still require Greg's browser verification.
-
-## v5 download response recovery
-
-Greg accepted the new Apple terms and successfully reauthenticated. Downloads still reported a non-plist response; its HTTP status and endpoint were not available. Do not ask for authentication again as a prerequisite.
-
-Add the updateProduct fallback used in official ipatool e3932cec31765b025b8e3edd6797e9e69c3c3fa8, pkg/appstore/appstore_download_product.go. After redownload, retry once only for empty HTTP 500 or a message-only No Longer Available response. Read the update endpoint from the public bag; accept only https://downloaddispatch.itunes.apple.com/up/updateProduct. Keep the exact selected iOS version, GUID and cookies. Validate the returned app, bundle and version. Do not retry other account messages, nonempty HTML, arbitrary statuses or missing/untrusted bag endpoints. Applies to downloads, history listing and version metadata.
-
-Parsing failures now identify HTTP status, hostname and path, without response bodies, queries or session values. This improves diagnosis even when the narrow recovery does not apply. Authentication and backend code are unchanged. Frontend 156 tests, TypeScript check and production build passed. Real-account downloading remains unverified until Greg retries.
-
-### v5 deployment verification
-
-Runtime source 5c84cf3f7b23d1c1608f2cea342cecb42667d9ab; image assppweb-local:sap-20261009-v5, sha256:c6dc036b50aa2c06c1b12b01b62c19b4191dbc583c2ae407400c6ba22672cf29, built 2026-10-10T04:08:15Z. 156 frontend and 49 backend tests passed; both builds and frontend type check passed. Rebuilt backend artifacts after isolation exposed stale packaging, before production deployment. Final isolated browser confirmed public iOS catalog, bag update endpoint, sanitized parser diagnostics and one synthetic signed login protocol flow. Production HTTPS browser confirmed homepage 200, anonymous settings 401, authenticated settings 200, correct revision, catalog/bag and diagnostics, no page errors. These are not proof of real-account download success.
-
-Pre-v5 backup /opt/assppweb/backups/20261009-download-v5 contains Compose, optional environment, previous image, service timestamps and 65MB data archive. Preserve v4 and older rollback images, unchanged original data volume and access configuration. Other container start times unchanged. Complete source/artifact archive and source Git bundle stored at /opt/assppweb/asspp-download-recovery-20261009-v5*. VPS has no python3 or git; use existing shell/Node tooling for deployment operations.
+Images are built and signed by GitHub Actions from this branch. Deployment
+inventory, hostnames, local paths and runtime credentials belong in private
+operations records, not in this repository.

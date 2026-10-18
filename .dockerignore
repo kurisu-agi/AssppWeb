@@ -12,3 +12,9 @@ icon.jpg
 references
 compose*.yml
 .DS_Store
+.env
+.env.*
+*.pem
+*.key
+Dockerfile.runtime
+build-artifacts
